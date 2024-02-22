@@ -1,13 +1,30 @@
-import openai
+from openai import OpenAI
 import sys
-import os
 from pydub import AudioSegment
 import argparse
 import os
+import re
+
+client = OpenAI()
 
 
 def split_text(text, chunk_size=4096):
-    return [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)]
+    sentences = re.split(r'(?<=[.!?])\s+', text)
+    chunks = []
+    current_chunk = ""
+
+    for sentence in sentences:
+        if len(current_chunk) + len(sentence) <= chunk_size:
+            current_chunk += sentence + " "
+        else:
+            chunks.append(current_chunk)
+            current_chunk = sentence + " "
+
+    # Add the last chunk if it's not empty
+    if current_chunk:
+        chunks.append(current_chunk)
+
+    return chunks
 
 
 def text_file_to_speech(input_file, voice):
@@ -19,15 +36,16 @@ def text_file_to_speech(input_file, voice):
         combined_audio = None
 
         for index, chunk in enumerate(text_chunks):
-            response = openai.Audio.create(
-                model="tts-1",
-                voice=voice,
-                response_format="mp3",
-                input=chunk
-            )
-
             chunk_file = f"chunk_{index}.mp3"
-            response.stream_to_file(chunk_file)
+            with client.audio.speech.with_streaming_response.create(
+                    model="tts-1",
+                    voice=voice,
+                    response_format="mp3",
+                    input=chunk
+            ) as response:
+                with open(chunk_file, 'wb') as file:
+                    for chunk in response.iter_bytes():
+                        file.write(chunk)
 
             # Merge audio files
             chunk_audio = AudioSegment.from_mp3(chunk_file)
@@ -48,9 +66,7 @@ def main():
         print("Error: OPENAI_API_KEY environment variable not set.")
         sys.exit(1)
 
-    openai.api_key = api_key
-
-    parser = argparse.ArgumentParser(description="Convert text file to speech.")
+    parser = argparse.ArgumentParser(description="Convert text file to speech, writing an MP3 from text.")
     parser.add_argument("input_file", help="Input text file")
     parser.add_argument("--voice", default="alloy", choices=["alloy", "echo", "fable", "onyx", "nova", "shimmer"],
                         help="Voice selection")

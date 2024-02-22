@@ -1,0 +1,1 @@
+The error "name 'chunk_file' is not defined" is occurring because the variable chunk_file is being used before it's defined in your code. This variable should hold the filename for each audio chunk that's created from the text split. To fix this, you need to define chunk_file before using it in the with open(chunk_file, 'wb') as file: line.
